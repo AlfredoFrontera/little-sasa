@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Little Sasa in the Sky - 8-bit Edition</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #222;
+            font-family: 'Courier New', monospace;
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+        }
+        
+        #gameCanvas {
+            border: 4px solid #333;
+            cursor: pointer;
+            max-width: 100%;
+            max-height: 100vh;
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+        }
+        
+        #audioCredit {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            color: #666;
+            font-size: 12px;
+            text-decoration: none;
+        }
+        
+        #audioCredit:hover {
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    
+    <!-- Audio element for background music -->
+    <audio id="bgMusic" loop style="display: none;">
+        <!-- Google Drive direct link -->
+        <source src="https://drive.google.com/uc?export=download&id=1mG4heRdMmZ-CCt25_tSpq_CwsR944wYz" type="audio/mpeg">
+    </audio>
+    
+    <div style="position: fixed; bottom: 10px; left: 10px; color: #666; font-size: 12px;">
+        <button id="musicToggle" style="background: #4CAF50; color: white; border: none; padding: 5px 10px; cursor: pointer; font-family: 'Courier New', monospace;">
+            🔊 Music ON
+        </button>
+        <br>
+        <span style="margin-top: 5px; display: inline-block;">Music: Meet Me Outside - Sapphire Adizes</span>
+    </div>
+
+    <script>
+        // ===== GAME.JS - Core Game Logic =====
+        // 8-bit style game with pixel art aesthetics
+        
+        class Game {
+            constructor(canvas) {
+                this.canvas = canvas;
+                this.ctx = canvas.getContext('2d');
+                
+                // Disable image smoothing for pixel art
+                this.ctx.imageSmoothingEnabled = false;
+                
+                // Game dimensions (lower res for 8-bit feel)
+                this.width = 320;
+                this.height = 480;
+                this.setupCanvas();
+                
+                // Game state
+                this.gameState = 'START'; // START, PLAYING, GAMEOVER
+                this.score = 0;
+                this.frameCount = 0;
+                
+                // Physics constants
+                this.gravity = 0.4;
+                this.jumpPower = -6;
+                this.cloudSpeed = 2;
+                
+                // Sasa properties (based on the character in the image)
+                this.sasa = {
+                    x: this.width * 0.25,
+                    y: this.height / 2,
+                    width: 24,  // 8-bit sprite size
+                    height: 32, // 8-bit sprite size
+                    velocity: 0,
+                    frame: 0,
+                    animSpeed: 8
+                };
+                
+                // Cloud properties
+                this.cloudGap = 120; // Gap between top and bottom clouds
+                this.cloudWidth = 80; // Wider clouds
+                this.cloudHeight = 64; // Taller cloud segments
+                this.cloudSpacing = 200; // Distance between cloud pairs
+                this.clouds = [];
+                
+                // Background elements
+                this.stars = this.generateStars(15);
+                this.pixelSize = 2; // Size of "pixels" for 8-bit effect
+                
+                // Initialize first clouds
+                this.initializeClouds();
+            }
+            
+            setupCanvas() {
+                // Make canvas responsive while maintaining pixel art
+                const scale = Math.min(window.innerWidth / this.width, window.innerHeight / this.height) * 0.9;
+                this.canvas.width = this.width;
+                this.canvas.height = this.height;
+                this.canvas.style.width = (this.width * scale) + 'px';
+                this.canvas.style.height = (this.height * scale) + 'px';
+            }
+            
+            generateStars(count) {
+                const stars = [];
+                for (let i = 0; i < count; i++) {
+                    stars.push({
+                        x: Math.floor(Math.random() * this.width / 4) * 4,
+                        y: Math.floor(Math.random() * this.height / 4) * 4,
+                        speed: (Math.random() > 0.5 ? 1 : 0.5)
+                    });
+                }
+                return stars;
+            }
+            
+            initializeClouds() {
+                // Create initial set of clouds
+                for (let i = 0; i < 3; i++) {
+                    this.clouds.push(this.createCloudPair(this.width + i * this.cloudSpacing));
+                }
+            }
+            
+            createCloudPair(x) {
+                const minHeight = 80;
+                const maxHeight = this.height - this.cloudGap - 80;
+                const topHeight = Math.floor(Math.random() * (maxHeight - minHeight) / 16) * 16 + minHeight;
+                
+                return {
+                    x: x,
+                    topHeight: topHeight,
+                    bottomY: topHeight + this.cloudGap,
+                    passed: false
+                };
+            }
+            
+            jump() {
+                if (this.gameState === 'PLAYING') {
+                    this.sasa.velocity = this.jumpPower;
+                }
+            }
+            
+            update() {
+                if (this.gameState !== 'PLAYING') return;
+                
+                this.frameCount++;
+                
+                // Update Sasa
+                this.sasa.velocity += this.gravity;
+                this.sasa.y += this.sasa.velocity;
+                
+                // Animate Sasa
+                if (this.frameCount % this.sasa.animSpeed === 0) {
+                    this.sasa.frame = (this.sasa.frame + 1) % 2;
+                }
+                
+                // Update stars
+                this.stars.forEach(star => {
+                    if (this.frameCount % 2 === 0) { // Slower star movement
+                        star.x -= star.speed;
+                        if (star.x < 0) {
+                            star.x = this.width;
+                            star.y = Math.floor(Math.random() * this.height / 4) * 4;
+                        }
+                    }
+                });
+                
+                // Update clouds
+                this.clouds.forEach((cloud, index) => {
+                    cloud.x -= this.cloudSpeed;
+                    
+                    // Check if Sasa passed this cloud
+                    if (!cloud.passed && cloud.x + this.cloudWidth < this.sasa.x) {
+                        cloud.passed = true;
+                        this.score++;
+                    }
+                    
+                    // Remove off-screen clouds
+                    if (cloud.x + this.cloudWidth < 0) {
+                        this.clouds.splice(index, 1);
+                        this.clouds.push(this.createCloudPair(
+                            this.clouds[this.clouds.length - 1].x + this.cloudSpacing
+                        ));
+                    }
+                });
+                
+                // Check collisions
+                this.checkCollisions();
+            }
+            
+            checkCollisions() {
+                // Ground collision
+                if (this.sasa.y + this.sasa.height > this.height - 32) {
+                    this.gameOver();
+                    return;
+                }
+                
+                // Ceiling collision
+                if (this.sasa.y < 0) {
+                    this.gameOver();
+                    return;
+                }
+                
+                // Cloud collisions (with some forgiveness for gameplay)
+                this.clouds.forEach(cloud => {
+                    const margin = 4; // Small margin for better gameplay
+                    if (this.sasa.x + this.sasa.width - margin > cloud.x && 
+                        this.sasa.x + margin < cloud.x + this.cloudWidth) {
+                        
+                        // Check top cloud collision
+                        if (this.sasa.y + margin < cloud.topHeight) {
+                            this.gameOver();
+                            return;
+                        }
+                        
+                        // Check bottom cloud collision
+                        if (this.sasa.y + this.sasa.height - margin > cloud.bottomY) {
+                            this.gameOver();
+                            return;
+                        }
+                    }
+                });
+            }
+            
+            gameOver() {
+                this.gameState = 'GAMEOVER';
+            }
+            
+            reset() {
+                this.score = 0;
+                this.frameCount = 0;
+                this.sasa.y = this.height / 2;
+                this.sasa.velocity = 0;
+                this.sasa.frame = 0;
+                this.clouds = [];
+                this.initializeClouds();
+                this.gameState = 'PLAYING';
+            }
+            
+            // Draw 8-bit style cloud (thick and fluffy)
+            drawCloud(x, y, width, height) {
+                this.ctx.fillStyle = '#FFFFFF';
+                
+                // Much thicker, fluffier cloud shape
+                const u = 8; // unit size
+                
+                // Main thick body (multiple layers for thickness)
+                this.ctx.fillRect(x, y + u * 2, width, height - u * 4);
+                this.ctx.fillRect(x + u, y + u, width - u * 2, height - u * 2);
+                this.ctx.fillRect(x + u * 2, y, width - u * 4, height);
+                
+                // Top puffs (making it fluffy)
+                this.ctx.fillRect(x + u * 2, y - u, u * 4, u * 2);
+                this.ctx.fillRect(x + u * 5, y - u * 2, u * 4, u * 3);
+                this.ctx.fillRect(x + width - u * 6, y - u, u * 4, u * 2);
+                
+                // Side bulges for fluffiness
+                this.ctx.fillRect(x - u, y + u * 3, u * 2, height - u * 6);
+                this.ctx.fillRect(x + width - u, y + u * 3, u * 2, height - u * 6);
+                
+                // Bottom puffs
+                this.ctx.fillRect(x + u * 3, y + height - u, u * 3, u * 2);
+                this.ctx.fillRect(x + width - u * 6, y + height - u, u * 3, u * 2);
+                
+                // Light shading for depth
+                this.ctx.fillStyle = '#F0F0F0';
+                this.ctx.fillRect(x + u * 2, y + height - u * 3, width - u * 4, u);
+                this.ctx.fillRect(x + u, y + height - u * 2, width - u * 2, u);
+                
+                // Extra white highlights on top
+                this.ctx.fillStyle = '#FFFFFF';
+                this.ctx.fillRect(x + u * 3, y + u, u * 2, u);
+                this.ctx.fillRect(x + width - u * 5, y + u, u * 2, u);
+            }
+            
+            // Draw 8-bit style Sasa with white glasses
+            drawSasa() {
+                const x = Math.floor(this.sasa.x);
+                const y = Math.floor(this.sasa.y);
+                const p = 2; // pixel size
+                
+                // Hair (blonde)
+                this.ctx.fillStyle = '#FFD700';
+                this.ctx.fillRect(x + p * 2, y, p * 8, p * 4);
+                this.ctx.fillRect(x + p, y + p, p * 10, p * 3);
+                this.ctx.fillRect(x, y + p * 2, p * 12, p * 2);
+                
+                // Face
+                this.ctx.fillStyle = '#FDBCB4';
+                this.ctx.fillRect(x + p * 2, y + p * 4, p * 8, p * 6);
+                this.ctx.fillRect(x + p, y + p * 5, p * 10, p * 4);
+                
+                // White glasses frames
+                this.ctx.fillStyle = '#FFFFFF';
+                // Left lens frame
+                this.ctx.fillRect(x + p * 2, y + p * 5, p * 3, p * 3);
+                this.ctx.fillRect(x + p * 2, y + p * 5, p * 4, p);
+                this.ctx.fillRect(x + p * 2, y + p * 7, p * 4, p);
+                this.ctx.fillRect(x + p * 5, y + p * 5, p, p * 3);
+                // Right lens frame
+                this.ctx.fillRect(x + p * 7, y + p * 5, p * 3, p * 3);
+                this.ctx.fillRect(x + p * 6, y + p * 5, p * 4, p);
+                this.ctx.fillRect(x + p * 6, y + p * 7, p * 4, p);
+                this.ctx.fillRect(x + p * 6, y + p * 5, p, p * 3);
+                // Bridge
+                this.ctx.fillRect(x + p * 5, y + p * 6, p * 2, p);
+                
+                // Black glass lenses
+                this.ctx.fillStyle = '#000000';
+                this.ctx.fillRect(x + p * 3, y + p * 6, p * 2, p);
+                this.ctx.fillRect(x + p * 7, y + p * 6, p * 2, p);
+                
+                // Mouth
+                this.ctx.fillStyle = '#FF69B4';
+                this.ctx.fillRect(x + p * 5, y + p * 8, p * 2, p);
+                
+                // Body (light blue dress)
+                this.ctx.fillStyle = '#87CEEB';
+                this.ctx.fillRect(x + p * 2, y + p * 10, p * 8, p * 6);
+                this.ctx.fillRect(x + p, y + p * 11, p * 10, p * 5);
+                
+                // Red detail
+                this.ctx.fillStyle = '#FF0000';
+                this.ctx.fillRect(x + p * 4, y + p * 12, p * 4, p * 2);
+                
+                // Arms (animated)
+                this.ctx.fillStyle = '#FDBCB4';
+                if (this.sasa.frame === 0) {
+                    this.ctx.fillRect(x, y + p * 11, p * 2, p * 3);
+                    this.ctx.fillRect(x + p * 10, y + p * 11, p * 2, p * 3);
+                } else {
+                    this.ctx.fillRect(x, y + p * 10, p * 2, p * 3);
+                    this.ctx.fillRect(x + p * 10, y + p * 10, p * 2, p * 3);
+                }
+            }
+            
+            render() {
+                // Clear canvas
+                this.ctx.clearRect(0, 0, this.width, this.height);
+                
+                // Sky gradient (8-bit style)
+                const gradient = this.ctx.createLinearGradient(0, 0, 0, this.height);
+                gradient.addColorStop(0, '#4B9BFF');
+                gradient.addColorStop(1, '#87CEEB');
+                this.ctx.fillStyle = gradient;
+                this.ctx.fillRect(0, 0, this.width, this.height);
+                
+                // Draw pixelated stars
+                this.ctx.fillStyle = '#FFFFFF';
+                this.stars.forEach(star => {
+                    this.ctx.fillRect(star.x, star.y, 4, 4);
+                });
+                
+                // Draw clouds
+                this.clouds.forEach(cloud => {
+                    // Top clouds
+                    let cloudY = 0;
+                    while (cloudY < cloud.topHeight) {
+                        this.drawCloud(cloud.x, cloudY, this.cloudWidth, this.cloudHeight);
+                        cloudY += this.cloudHeight - 8;
+                    }
+                    
+                    // Bottom clouds
+                    cloudY = cloud.bottomY;
+                    while (cloudY < this.height - 32) {
+                        this.drawCloud(cloud.x, cloudY, this.cloudWidth, this.cloudHeight);
+                        cloudY += this.cloudHeight - 8;
+                    }
+                });
+                
+                // Draw ground (8-bit style)
+                this.ctx.fillStyle = '#8B4513';
+                this.ctx.fillRect(0, this.height - 32, this.width, 32);
+                this.ctx.fillStyle = '#228B22';
+                this.ctx.fillRect(0, this.height - 32, this.width, 8);
+                
+                // Draw grass pattern
+                this.ctx.fillStyle = '#32CD32';
+                for (let x = 0; x < this.width; x += 8) {
+                    if (x % 16 === 0) {
+                        this.ctx.fillRect(x, this.height - 30, 4, 4);
+                    }
+                }
+                
+                // Draw Sasa
+                this.drawSasa();
+            }
+        }
+        
+        // ===== UI.JS - User Interface Logic =====
+        class UI {
+            constructor(game) {
+                this.game = game;
+                this.ctx = game.ctx;
+            }
+            
+            drawPixelText(text, x, y, size = 1) {
+                // Simple 8-bit style text rendering
+                this.ctx.font = `${size * 16}px 'Courier New', monospace`;
+                this.ctx.fillText(text, x, y);
+            }
+            
+            renderScore() {
+                // Score background
+                this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                this.ctx.fillRect(this.game.width / 2 - 40, 10, 80, 30);
+                
+                // Score text
+                this.ctx.fillStyle = '#FFFFFF';
+                this.ctx.textAlign = 'center';
+                this.drawPixelText(this.game.score.toString(), this.game.width / 2, 30, 1.5);
+                this.ctx.textAlign = 'left';
+            }
+            
+            renderStartScreen() {
+                // Overlay
+                this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                this.ctx.fillRect(0, 0, this.game.width, this.game.height);
+                
+                // Title
+                this.ctx.fillStyle = '#FFD700';
+                this.ctx.textAlign = 'center';
+                this.drawPixelText('LITTLE SASA', this.game.width / 2, this.game.height / 2 - 60, 2);
+                this.ctx.fillStyle = '#87CEEB';
+                this.drawPixelText('IN THE SKY', this.game.width / 2, this.game.height / 2 - 20, 2);
+                
+                // Start instruction
+                this.ctx.fillStyle = '#FFFFFF';
+                this.drawPixelText('CLICK TO START', this.game.width / 2, this.game.height / 2 + 40);
+                
+                // Flashing effect
+                if (Math.floor(this.game.frameCount / 30) % 2 === 0) {
+                    this.drawPixelText('TAP TO FLY!', this.game.width / 2, this.game.height / 2 + 80);
+                }
+                
+                this.ctx.textAlign = 'left';
+            }
+            
+            renderGameOverScreen() {
+                // Overlay
+                this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                this.ctx.fillRect(0, 0, this.game.width, this.game.height);
+                
+                // Game Over text
+                this.ctx.fillStyle = '#FF0000';
+                this.ctx.textAlign = 'center';
+                this.drawPixelText('GAME OVER', this.game.width / 2, this.game.height / 2 - 60, 2);
+                
+                // Score
+                this.ctx.fillStyle = '#FFFFFF';
+                this.drawPixelText(`SCORE: ${this.game.score}`, this.game.width / 2, this.game.height / 2);
+                
+                // Retry button (8-bit style)
+                const buttonWidth = 120;
+                const buttonHeight = 40;
+                const buttonX = this.game.width / 2 - buttonWidth / 2;
+                const buttonY = this.game.height / 2 + 40;
+                
+                // Button shadow
+                this.ctx.fillStyle = '#004400';
+                this.ctx.fillRect(buttonX + 4, buttonY + 4, buttonWidth, buttonHeight);
+                
+                // Button
+                this.ctx.fillStyle = '#00AA00';
+                this.ctx.fillRect(buttonX, buttonY, buttonWidth, buttonHeight);
+                
+                // Button highlight
+                this.ctx.fillStyle = '#00FF00';
+                this.ctx.fillRect(buttonX, buttonY, buttonWidth, 4);
+                this.ctx.fillRect(buttonX, buttonY, 4, buttonHeight);
+                
+                // Button text
+                this.ctx.fillStyle = '#FFFFFF';
+                this.drawPixelText('RETRY', this.game.width / 2, buttonY + 27);
+                this.ctx.textAlign = 'left';
+                
+                // Store button bounds
+                this.retryButton = { x: buttonX, y: buttonY, width: buttonWidth, height: buttonHeight };
+            }
+        }
+        
+        // ===== MAIN.JS - Main Game Loop and Event Handling =====
+        class Main {
+            constructor() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.game = new Game(this.canvas);
+                this.ui = new UI(this.game);
+                
+                this.setupEventListeners();
+                this.gameLoop();
+            }
+            
+            setupEventListeners() {
+                // Handle both click and touch events
+                this.canvas.addEventListener('click', (e) => this.handleInput(e));
+                this.canvas.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    this.handleInput(e);
+                });
+                
+                // Handle window resize
+                window.addEventListener('resize', () => this.game.setupCanvas());
+            }
+            
+            handleInput(e) {
+                const rect = this.canvas.getBoundingClientRect();
+                const scaleX = this.canvas.width / rect.width;
+                const scaleY = this.canvas.height / rect.height;
+                
+                let x, y;
+                if (e.touches) {
+                    x = (e.touches[0].clientX - rect.left) * scaleX;
+                    y = (e.touches[0].clientY - rect.top) * scaleY;
+                } else {
+                    x = (e.clientX - rect.left) * scaleX;
+                    y = (e.clientY - rect.top) * scaleY;
+                }
+                
+                switch (this.game.gameState) {
+                    case 'START':
+                        this.game.gameState = 'PLAYING';
+                        this.game.frameCount = 0;
+                        break;
+                    case 'PLAYING':
+                        this.game.jump();
+                        break;
+                    case 'GAMEOVER':
+                        // Check if retry button was clicked
+                        if (this.ui.retryButton &&
+                            x >= this.ui.retryButton.x && x <= this.ui.retryButton.x + this.ui.retryButton.width &&
+                            y >= this.ui.retryButton.y && y <= this.ui.retryButton.y + this.ui.retryButton.height) {
+                            this.game.reset();
+                        }
+                        break;
+                }
+            }
+            
+            gameLoop() {
+                // Update game logic
+                this.game.update();
+                
+                // Render game
+                this.game.render();
+                
+                // Render UI based on game state
+                switch (this.game.gameState) {
+                    case 'START':
+                        this.ui.renderStartScreen();
+                        this.game.frameCount++;
+                        break;
+                    case 'PLAYING':
+                        this.ui.renderScore();
+                        break;
+                    case 'GAMEOVER':
+                        this.ui.renderGameOverScreen();
+                        break;
+                }
+                
+                requestAnimationFrame(() => this.gameLoop());
+            }
+        }
+        
+        // Start the game when page loads
+        window.addEventListener('load', () => {
+            const game = new Main();
+            
+            // Audio setup
+            const bgMusic = document.getElementById('bgMusic');
+            const musicToggle = document.getElementById('musicToggle');
+            let musicEnabled = false;
+            
+            // Handle music toggle
+            musicToggle.addEventListener('click', () => {
+                if (musicEnabled) {
+                    bgMusic.pause();
+                    musicToggle.textContent = '🔇 Music OFF';
+                    musicToggle.style.background = '#666';
+                    musicEnabled = false;
+                } else {
+                    bgMusic.play().catch(e => {
+                        console.log('Audio play failed:', e);
+                    });
+                    musicToggle.textContent = '🔊 Music ON';
+                    musicToggle.style.background = '#4CAF50';
+                    musicEnabled = true;
+                }
+            });
+            
+            // Try to play music on first user interaction
+            document.addEventListener('click', function startMusic() {
+                if (!musicEnabled && bgMusic.paused) {
+                    bgMusic.play().catch(e => {
+                        console.log('Auto-play failed:', e);
+                    });
+                    musicEnabled = true;
+                    musicToggle.textContent = '🔊 Music ON';
+                    musicToggle.style.background = '#4CAF50';
+                }
+                // Remove this listener after first interaction
+                document.removeEventListener('click', startMusic);
+            }, { once: true });
+        });
+    </script>
+</body>
+</html>
